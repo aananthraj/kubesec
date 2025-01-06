@@ -147,7 +147,12 @@ impact a given change will have.
 
 To build the project you can use `make build`. The resulting binary will be in `./dist`.
 
-To test the project you can run `make test` for unit and command-line acceptance testing. For http testing also run `make test-remote`.
+To test the project you can run `make test` for unit and `make test-acceptance` command-line acceptance testing.
+For http testing also run `make test-remote`.
+
+Note: The acceptance tests require some dependencies fetched via submodules. You can either clone the repo with
+`--recurse-submodules` or it will automatically fetch them if they're missing when running
+`make test-acceptance`/`make test-remote`.
 
 ### Pull Requests
 
@@ -211,7 +216,6 @@ In the future it will also be formatted with [shfmt](https://github.com/mvdan/sh
 
 All markdown code is linted with [markdownlint-cli](https://github.com/igorshubovych/markdownlint-cli).
 
-[good_first_issue]:https://github.com/controlplaneio/kubesec/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22good+first+issue%22+sort%3Acomments-desc
+[good_first_issue]: https://github.com/controlplaneio/kubesec/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22good+first+issue%22+sort%3Acomments-desc
 [help_wanted]: https://github.com/controlplaneio/kubesec/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc+label%3A%22help+wanted%22
-
 [commit_signing]: https://docs.github.com/en/free-pro-team@latest/github/authenticating-to-github/managing-commit-signature-verification

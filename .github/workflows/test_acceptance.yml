@@ -7,12 +7,16 @@ on:
     branches: [master]
     paths:
       - "**.go"
+      - "go.mod"
+      - "go.sum"
       - "**.bash"
       - "**.bats"
   pull_request:
     branches: [master]
     paths:
       - "**.go"
+      - "go.mod"
+      - "go.sum"
       - "**.bash"
       - "**.bats"
 
@@ -22,20 +26,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v2.1.3
-        id: go
+        uses: actions/setup-go@v5
         with:
-          go-version: ^1.15
+          go-version-file: go.mod
 
       - name: Build kubesec
         run: |
           make build
 
       - name: Upload kubesec
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: kubesec
           path: dist/kubesec
@@ -52,10 +55,13 @@ jobs:
         test: ["acceptance", "remote"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+        with:
+          # needed for bats tests
+          submodules: true
 
       - name: Download kubesec
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: kubesec
           path: dist
@@ -70,6 +76,6 @@ jobs:
           echo "REMOTE_URL=localhost:$REMOTE_PORT" >> $GITHUB_ENV
           ./dist/kubesec http $REMOTE_PORT 2>error.log >output.log &
 
-      - name: Run bats acceptance tests
+      - name: Run bats acceptance tests against built binary
         run: |
-          make test-${{ matrix.test }}
+          make test-${{ matrix.test }}-built

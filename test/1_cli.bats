@@ -40,9 +40,19 @@ teardown() {
   assert_gt_zero_points
 }
 
+@test "passes deployment with pod securitycontext runAsNonRoot" {
+  run _app "${TEST_DIR}/asset/score-1-dep-podseccon-run-as-non-root.yml"
+  assert_gt_zero_points
+}
+
 @test "passes deployment with securitycontext runAsNonRoot" {
   run _app "${TEST_DIR}/asset/score-1-dep-seccon-run-as-non-root.yml"
   assert_gt_zero_points
+}
+
+@test "fails deployment with pod securitycontext runAsUser 1" {
+  run _app "${TEST_DIR}/asset/score-1-dep-podseccon-run-as-user-1.yml"
+  assert_zero_points
 }
 
 @test "fails deployment with securitycontext runAsUser 1" {
@@ -50,8 +60,33 @@ teardown() {
   assert_zero_points
 }
 
+@test "passes deployment with pod securitycontext runAsUser > 10000" {
+  run _app "${TEST_DIR}/asset/score-1-dep-podseccon-run-as-user-10001.yml"
+  assert_gt_zero_points
+}
+
 @test "passes deployment with securitycontext runAsUser > 10000" {
   run _app "${TEST_DIR}/asset/score-1-dep-seccon-run-as-user-10001.yml"
+  assert_gt_zero_points
+}
+
+@test "fails deployment with pod securitycontext runAsGroup 1" {
+  run _app "${TEST_DIR}/asset/score-1-dep-podseccon-run-as-group-1.yml"
+  assert_zero_points
+}
+
+@test "fails deployment with securitycontext runAsGroup 1" {
+  run _app "${TEST_DIR}/asset/score-1-dep-seccon-run-as-group-1.yml"
+  assert_zero_points
+}
+
+@test "passes deployment with pod securitycontext runAsGroup > 10000" {
+  run _app "${TEST_DIR}/asset/score-1-dep-podseccon-run-as-group-10001.yml"
+  assert_gt_zero_points
+}
+
+@test "passes deployment with securitycontext runAsGroup > 10000" {
+  run _app "${TEST_DIR}/asset/score-1-dep-seccon-run-as-group-10001.yml"
   assert_gt_zero_points
 }
 
@@ -65,7 +100,7 @@ teardown() {
 
   run jq -r .[].message <<<"${output}"
 
-  assert_output --partial 'fake: Additional property fake is not allowed'
+  assert_output --partial "additionalProperties 'fake' not allowed"
 }
 
 @test "passes deployment with cgroup resource limits" {
@@ -80,6 +115,11 @@ teardown() {
 
 @test "passes StatefulSet with volumeClaimTemplate" {
   run _app "${TEST_DIR}/asset/score-1-statefulset-volumeclaimtemplate.yml"
+  assert_gt_zero_points
+}
+
+@test "passes StatefulSet with no volumeClaimTemplate" {
+  run _app "${TEST_DIR}/asset/score-1-statefulset-novolumeclaimtemplate.yml"
   assert_gt_zero_points
 }
 
@@ -141,6 +181,11 @@ teardown() {
 @test "fails deployment with allowPrivilegeEscalation" {
   run _app "${TEST_DIR}/asset/allowPrivilegeEscalation.yaml"
   assert_lt_zero_points
+}
+
+@test "passes Pod with automountServiceAccountToken set to false" {
+  run _app "${TEST_DIR}/asset/score-1-pod-automount-sa-set-to-false.yml"
+  assert_gt_zero_points
 }
 
 @test "returns integer point score for each advice element" {

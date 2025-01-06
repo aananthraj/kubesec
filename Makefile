@@ -1,6 +1,7 @@
 NAME := kubesec
 GITHUB_ORG = controlplaneio
 DOCKER_HUB_ORG = controlplane
+K8S_SCHEMA_VER = 1.31.0
 
 ### github.com/controlplaneio/ensure-content.git makefile-header START ###
 ifeq ($(NAME),)
@@ -89,13 +90,27 @@ test: ## unit and local acceptance tests
 	@echo "+ $@"
 	make test-unit build test-acceptance
 
+# fetch the parent directory of a file we expect to exist
+# don't go deeper than the root of the directory
+test/bin/%:
+	git submodule update --init -- $(dirname $@)
+
+.PHONY: bats
+bats: test/bin/bats/README.md test/bin/bats-assert/README.md test/bin/bats-support/README.md ## fetch bats dependencies
+
 .PHONY: test-acceptance
-test-acceptance: ## acceptance tests
+test-acceptance: build test-acceptance-built ## acceptance tests
+
+.PHONY: test-acceptance-built
+test-acceptance-built: bats ## run acceptance tests with existing kubesec binary
 	@echo "+ $@"
 	bash -xc 'cd test && ./bin/bats/bin/bats $(BATS_PARALLEL_JOBS) .'
 
 .PHONY: test-remote
-test-remote: ## acceptance tests against remote URL
+test-remote: build test-remote-built ## acceptance tests against remote URL
+
+.PHONY: test-remote-built
+test-remote-built: bats ## acceptance tests against remote URL with existing kubesec binary
 	@echo "+ $@"
 	bash -xc 'cd test && REMOTE_URL=$(REMOTE_URL) ./bin/bats/bin/bats $(BATS_PARALLEL_JOBS) .'
 
@@ -126,7 +141,7 @@ prune: ## golang dependency prune
 .PHONY: docker-build
 docker-build: ## builds a docker image
 	@echo "+ $@"
-	docker build --tag "${CONTAINER_NAME}" .
+	docker build --tag "${CONTAINER_NAME}" --build-arg "K8S_SCHEMA_VER=${K8S_SCHEMA_VER}" .
 	docker tag "${CONTAINER_NAME}" "${CONTAINER_NAME_LATEST}"
 	@echo "Successfully tagged ${CONTAINER_NAME} as ${CONTAINER_NAME_LATEST}"
 
