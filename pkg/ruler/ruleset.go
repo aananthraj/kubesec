@@ -5,19 +5,17 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 
-	"github.com/controlplaneio/kubesec/v2/pkg/rules"
 	"github.com/ghodss/yaml"
 	"github.com/in-toto/in-toto-golang/in_toto"
-	"github.com/instrumenta/kubeval/kubeval"
 	"github.com/thedevsaddam/gojsonq/v2"
 	"go.uber.org/zap"
+
+	"github.com/controlplaneio/kubesec/v2/pkg/rules"
 )
 
 type Ruleset struct {
@@ -79,7 +77,7 @@ func NewRuleset(logger *zap.SugaredLogger) *Ruleset {
 	runAsNonRootRule := Rule{
 		Predicate: rules.RunAsNonRoot,
 		ID:        "RunAsNonRoot",
-		Selector:  "containers[] .securityContext .runAsNonRoot == true",
+		Selector:  ".spec, .spec.containers[] | .securityContext .runAsNonRoot == true",
 		Reason:    "Force the running image to run as a non-root user to ensure least privilege",
 		Kinds:     []string{"Pod", "Deployment", "StatefulSet", "DaemonSet"},
 		Points:    1,
@@ -90,13 +88,24 @@ func NewRuleset(logger *zap.SugaredLogger) *Ruleset {
 	runAsUserRule := Rule{
 		Predicate: rules.RunAsUser,
 		ID:        "RunAsUser",
-		Selector:  "containers[] .securityContext .runAsUser -gt 10000",
-		Reason:    "Run as a high-UID user to avoid conflicts with the host's user table",
+		Selector:  ".spec, .spec.containers[] | .securityContext .runAsUser -gt 10000",
+		Reason:    "Run as a high-UID user to avoid conflicts with the host's users",
 		Kinds:     []string{"Pod", "Deployment", "StatefulSet", "DaemonSet"},
 		Points:    1,
 		Advise:    4,
 	}
 	list = append(list, runAsUserRule)
+
+	runAsGroupRule := Rule{
+		Predicate: rules.RunAsGroup,
+		ID:        "RunAsGroup",
+		Selector:  ".spec, .spec.containers[] | .securityContext .runAsGroup -gt 10000",
+		Reason:    "Run as a high-UID group to avoid conflicts with the host's groups",
+		Kinds:     []string{"Pod", "Deployment", "StatefulSet", "DaemonSet"},
+		Points:    1,
+		Advise:    4,
+	}
+	list = append(list, runAsGroupRule)
 
 	privilegedRule := Rule{
 		Predicate: rules.Privileged,
@@ -148,6 +157,16 @@ func NewRuleset(logger *zap.SugaredLogger) *Ruleset {
 	}
 	list = append(list, dockerSockRule)
 
+	procRule := Rule{
+		Predicate: rules.ProcMount,
+		ID:        "ProcMount",
+		Selector:  "volumes[] .hostPath .path == /proc",
+		Reason:    "Mounting the proc directory from the host system into a container gives access to information about other containers running on the same host and can allow container breakout",
+		Kinds:     []string{"Pod", "Deployment", "StatefulSet", "DaemonSet"},
+		Points:    -9,
+	}
+	list = append(list, procRule)
+
 	requestsCPURule := Rule{
 		Predicate: rules.RequestsCPU,
 		ID:        "RequestsCPU",
@@ -179,8 +198,8 @@ func NewRuleset(logger *zap.SugaredLogger) *Ruleset {
 	list = append(list, requestsMemoryRule)
 
 	limitsMemoryRule := Rule{
-		Predicate: rules.RequestsMemory,
-		ID:        "RequestsMemory",
+		Predicate: rules.LimitsMemory,
+		ID:        "LimitsMemory",
 		Selector:  "containers[] .resources .limits .memory",
 		Reason:    "Enforcing memory limits prevents DOS via resource exhaustion",
 		Kinds:     []string{"Pod", "Deployment", "StatefulSet", "DaemonSet"},
@@ -242,7 +261,7 @@ func NewRuleset(logger *zap.SugaredLogger) *Ruleset {
 		Predicate: rules.VolumeClaimAccessModeReadWriteOnce,
 		ID:        "VolumeClaimAccessModeReadWriteOnce",
 		Selector:  ".spec .volumeClaimTemplates[] .spec .accessModes | index(\"ReadWriteOnce\")",
-		Reason:    "",
+		Reason:    "Setting the access mode of ReadWriteOnce on volumeClaimTemplates (if any exist) allows only one node to mount the persistentVolume",
 		Kinds:     []string{"StatefulSet"},
 		Points:    1,
 	}
@@ -252,7 +271,7 @@ func NewRuleset(logger *zap.SugaredLogger) *Ruleset {
 		Predicate: rules.VolumeClaimRequestsStorage,
 		ID:        "VolumeClaimRequestsStorage",
 		Selector:  ".spec .volumeClaimTemplates[] .spec .resources .requests .storage",
-		Reason:    "",
+		Reason:    "Setting a storage request on volumeClaimTemplates (if any exist) allows for the StatefulSet's PVCs to be bound to appropriately sized PVs.",
 		Kinds:     []string{"StatefulSet"},
 		Points:    1,
 	}
@@ -262,11 +281,22 @@ func NewRuleset(logger *zap.SugaredLogger) *Ruleset {
 		Predicate: rules.AllowPrivilegeEscalation,
 		ID:        "AllowPrivilegeEscalation",
 		Selector:  "containers[] .securityContext .allowPrivilegeEscalation == true",
-		Reason:    "",
+		Reason:    "Ensure a non-root process can not gain more privileges",
 		Kinds:     []string{"Pod", "Deployment", "StatefulSet", "DaemonSet"},
 		Points:    -7,
 	}
 	list = append(list, allowPrivilegeEscalation)
+
+	automountServiceAccountTokenRule := Rule{
+		Predicate: rules.AutomountServiceAccountToken,
+		ID:        "AutomountServiceAccountToken",
+		Selector:  ".spec .automountServiceAccountToken == false",
+		Reason:    "Disabling the automounting of Service Account Token reduces the attack surface of the API server",
+		Kinds:     []string{"Pod", "Deployment", "StatefulSet", "DaemonSet"},
+		Points:    1,
+	}
+
+	list = append(list, automountServiceAccountTokenRule)
 
 	return &Ruleset{
 		Rules:  list,
@@ -274,12 +304,12 @@ func NewRuleset(logger *zap.SugaredLogger) *Ruleset {
 	}
 }
 
-func (rs *Ruleset) Run(fileName string, fileBytes []byte) ([]Report, error) {
+func (rs *Ruleset) Run(fileName string, fileBytes []byte, schemaConfig SchemaConfig) ([]Report, error) {
 	reports := make([]Report, 0)
 
 	isJSON := json.Valid(fileBytes)
 	if isJSON {
-		report := rs.generateReport(fileName, fileBytes)
+		report := rs.generateReport(fileName, fileBytes, schemaConfig)
 		reports = append(reports, report)
 	} else {
 		lineBreak := detectLineBreak(fileBytes)
@@ -297,11 +327,12 @@ func (rs *Ruleset) Run(fileName string, fileBytes []byte) ([]Report, error) {
 				rs.logger.Debugf("empty but still more docs, continuing")
 				continue
 			}
+
 			data, err := yaml.YAMLToJSON(doc)
 			if err != nil {
 				return reports, err
 			}
-			report := rs.generateReport(fileName, data)
+			report := rs.generateReport(fileName, data, schemaConfig)
 			reports = append(reports, report)
 		}
 	}
@@ -370,9 +401,9 @@ func containsRule(rules []RuleRef, newRule RuleRef) bool {
 	return false
 }
 
-func (rs *Ruleset) generateReport(fileName string, json []byte) Report {
+func (rs *Ruleset) generateReport(fileName string, json []byte, schemaConfig SchemaConfig) Report {
 	report := Report{
-		Object:   "Unknown",
+		Object:   getObjectName(json),
 		FileName: fileName,
 		Score:    0,
 		Rules:    make([]RuleRef, 0),
@@ -381,45 +412,25 @@ func (rs *Ruleset) generateReport(fileName string, json []byte) Report {
 			Passed:   make([]RuleRef, 0),
 			Critical: make([]RuleRef, 0),
 		},
+		Valid: true,
 	}
 
-	report.Object = getObjectName(json)
-
-	// validate resource with kubeval
-	cfg := kubeval.NewDefaultConfig()
-	cfg.FileName = fileName
-	cfg.Strict = true
-
-	// try set kubeval schemas to local path
-	if _, err := os.Stat("/schemas/kubernetes-json-schema/master/master-standalone"); !os.IsNotExist(err) {
-		cfg.SchemaLocation = "file:///schemas"
-	}
-
-	results, err := kubeval.Validate(json, cfg)
-	if err != nil {
-		if strings.Contains(err.Error(), "404 Not Found") {
-			report.Message = "This resource is invalid, unknown schema"
-		} else {
-			report.Message = err.Error()
-		}
-		return report
-	}
-
-	for _, result := range results {
-		if len(result.Errors) > 0 {
-			for _, desc := range result.Errors {
-				report.Message += desc.String() + " "
-			}
-		} else if result.Kind == "" {
-			report.Message += "This resource is invalid, Kubernetes kind not found"
+	// validate resource with kubeconform
+	if !schemaConfig.DisableValidation {
+		report = validateSchema(report, json, schemaConfig)
+		if report.Message != "" {
+			report.Valid = false
+			return report
 		}
 	}
 
-	if len(report.Message) > 0 {
-		return report
-	}
-	report.Valid = true
+	// check kubesec rules
+	return rs.checkRules(report, json)
+}
 
+// checkRules checks the resource against the kubesec rules
+// and updates the provided Report.
+func (rs *Ruleset) checkRules(report Report, json []byte) Report {
 	// run rules in parallel
 	ch := make(chan RuleRef, len(rs.Rules))
 	var wg sync.WaitGroup
@@ -488,7 +499,6 @@ func eval(json []byte, rule Rule, ch chan RuleRef, wg *sync.WaitGroup) {
 		Points:     rule.Points,
 		Reason:     rule.Reason,
 		Selector:   rule.Selector,
-		Weight:     rule.Weight,
 		Link:       rule.Link,
 	}
 

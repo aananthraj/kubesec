@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Table of Contents
 
+- [2.14.2](#2142)
+- [2.14.1](#2141)
+- [2.14.0](#2140)
+- [2.13.0](#2130)
+- [2.12.0](#2120)
+- [2.11.4](#2114)
+- [2.11.3](#2113)
+- [2.11.2](#2112)
+- [2.11.1](#2111)
 - [2.11.0](#2110)
 - [2.10.2](#2102)
 - [2.10.1](#2101)
@@ -24,6 +33,58 @@ All notable changes to this project will be documented in this file.
 - [1.0.0](#100)
 
 ---
+
+## `2.14.2`
+
+- Bump dependencies
+  - thanks @jdesouza
+
+## `2.14.1`
+
+- Bump dependencies
+
+## `2.14.0`
+
+- Bump dependencies
+- Allow for providing an ip and port when running kubesec as a server
+- CI improvements
+
+## `2.13.0`
+
+- Bump dependencies
+- Add schema configuration options
+- Add subcommand to print all rules
+
+## `2.12.0`
+
+- Update kubesec dependencies
+- Update actions
+- Migrate from kubeval to kubeconform
+- Fix StatefulSet and VolumeClaimTemplate issues
+
+## `2.11.4`
+
+- Fix container builds so all tags are correctly built
+- Split release and container release so they can be re-ran separately
+- Bump dependencies
+
+## `2.11.3`
+
+- Bump dependencies
+- Minor doc cleanup
+
+## `2.11.2`
+
+- Allow specifying schema location with `--schema-dir`
+  - thanks @AndreasMili
+- Fix LimitsMemory rule incorrectly using the RequestsLimit rule
+  - thanks @AndreasMili
+
+## `2.11.1`
+
+- Split out actions so they can run only when necessary
+- Bump dependencies
+  - Includes a couple more breaking updates that required some additional work to integrate
 
 ## `2.11.0`
 

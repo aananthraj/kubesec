@@ -41,7 +41,8 @@ teardown() {
 @test "only valid types - deny PodSecurityPolicy" {
   run _app "${TEST_DIR}/asset/score-0-podsecuritypolicy-permissive.yml"
   assert_output --regexp ".*Only kinds .* accepted.*" \
-    || assert_output --regexp ".*This resource kind is not supported.*"
+    || assert_output --regexp ".*could not find schema for PodSecurityPolicy*" \
+    || assert_output --regexp ".*This resource kind is not supported*"
   if _is_local; then
     assert_failure
   fi
@@ -62,16 +63,10 @@ teardown() {
 @test "returns error for invalid JSON" {
   run _app "${TEST_DIR}/asset/invalid-input-pod-dump.json"
 
-  assert_output --regexp "Missing 'apiVersion' key" \
+  assert_output --regexp "[mM]issing 'apiVersion' key" \
     || assert_output --regexp ".*: Invalid type\. .*"
 
   assert_failure_local
-}
-
-@test "returns error YAML control characters" {
-  run _app "${TEST_DIR}/asset/invalid-input-no-control-characters.json"
-
-  assert_invalid_input
 }
 
 @test "passes bug dump twice [1/2]" {
@@ -100,7 +95,8 @@ teardown() {
   assert_line "Error: file path is required"
 }
 
-@test "errors with invalid file" {
+@test "errors with invalid file (local)" {
+  skip_if_not_local
   run _app somefile.yaml
   assert_failure_local
   assert_file_not_found
@@ -203,7 +199,7 @@ teardown() {
   skip_if_not_remote
 
   run _app "${TEST_DIR}/asset/form-prefix-not-file.yml"
-  assert_output --regexp ".*API: Missing 'apiVersion' key.*"
+  assert_output --regexp ".*[mM]issing 'apiVersion' key.*"
   assert_success
 }
 
